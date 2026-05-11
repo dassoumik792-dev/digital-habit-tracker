@@ -21,14 +21,37 @@ exports.register = asyncHandler(async (req, res) => {
   if (error) throw new AppError(error.message, 400);
 
   // The handle_new_user trigger creates the public.users row automatically.
+  console.log('[Auth] User created in auth, checking profile creation...');
+  
+  // Verify the trigger actually created the user profile
+  const { data: profileCheck, error: profileError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', data.user.id)
+    .single();
+    
+  console.log('[Auth] Profile creation verification:', {
+    userId: data.user.id,
+    profileFound: !!profileCheck,
+    profileError: profileError?.message,
+    profile: profileCheck ? { id: profileCheck.id, name: profileCheck.name, email: profileCheck.email } : null
+  });
+
   // Seed a welcome notification
-  await supabase.from('notifications').insert({
+  console.log('[Auth] Creating welcome notification...');
+  const { data: notifResult, error: notifError } = await supabase.from('notifications').insert({
     user_id: data.user.id,
     type: 'motivation',
     title: 'Welcome to FocusPulse AI! 🎉',
     message: `Hi ${name}! Start tracking your digital habits and unlock your productivity potential.`,
     icon: '🚀',
     priority: 'high',
+  }).select().single();
+  
+  console.log('[Auth] Welcome notification result:', {
+    success: !notifError,
+    notificationId: notifResult?.id,
+    error: notifError?.message
   });
 
   // Sign in immediately to return a session
