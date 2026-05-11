@@ -1,7 +1,8 @@
 /**
  * Login Page
- * Uses supabase.auth.signInWithPassword() via the auth store.
- * Completely separate from the register flow.
+ *
+ * Uses LOCAL loading state (not from Zustand store) so a stale persisted
+ * isLoading value can never freeze the button on page load.
  */
 
 import { useState, useEffect } from 'react';
@@ -16,53 +17,63 @@ import useAuthStore from '../store/authStore';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginWithGoogle, isAuthenticated, isLoading } = useAuthStore();
+  const { login, loginWithGoogle, isAuthenticated } = useAuthStore();
 
-  const [form, setForm]               = useState({ email: '', password: '' });
+  // ⚠️ LOCAL loading state — never comes from Zustand persist
+  const [loading, setLoading]           = useState(false);
+  const [form, setForm]                 = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors]   = useState({});
   const [serverError, setServerError]   = useState('');
 
-  // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) router.replace('/dashboard');
   }, [isAuthenticated]);
 
-  // ── Validation ──────────────────────────────────────────────────────────────
   const validate = () => {
     const errs = {};
-    if (!form.email.trim())                        errs.email    = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email))    errs.email    = 'Enter a valid email address';
-    if (!form.password)                            errs.password = 'Password is required';
-    else if (form.password.length < 6)             errs.password = 'Password must be at least 6 characters';
+    if (!form.email.trim())
+      errs.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(form.email))
+      errs.email = 'Enter a valid email address';
+    if (!form.password)
+      errs.password = 'Password is required';
+    else if (form.password.length < 6)
+      errs.password = 'Password must be at least 6 characters';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     setServerError('');
     if (!validate()) return;
 
-    const result = await login(form.email.trim().toLowerCase(), form.password);
-    if (result.success) {
-      router.replace('/dashboard');
-    } else {
-      setServerError(result.error || 'Login failed. Please try again.');
+    setLoading(true);
+    try {
+      const result = await login(
+        form.email.trim().toLowerCase(),
+        form.password,
+      );
+
+      if (result.success) {
+        router.replace('/dashboard');
+      } else {
+        setServerError(result.error || 'Login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleChange = (field) => (e) => {
     setForm({ ...form, [field]: e.target.value });
-    // Clear errors as user types
     if (fieldErrors[field]) setFieldErrors({ ...fieldErrors, [field]: '' });
     if (serverError) setServerError('');
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#0d0d1a' }}>
-      {/* Background glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full opacity-15"
           style={{ background: 'radial-gradient(ellipse, #6366f1 0%, transparent 70%)', filter: 'blur(60px)' }} />
@@ -85,37 +96,25 @@ export default function LoginPage() {
         </div>
 
         <div className="glass-card p-8">
-          {/* Server-level error banner */}
+          {/* Server error */}
           {serverError && (
             <div className="mb-5 px-4 py-3 rounded-xl text-sm text-red-300"
               style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
-              {serverError}
+              ⚠ {serverError}
             </div>
           )}
 
           <form onSubmit={handleSubmit} noValidate className="space-y-5">
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email address
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Email address</label>
               <div className="relative">
                 <RiMailLine className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange('email')}
-                  placeholder="you@example.com"
-                  className={`input-field pl-10 ${fieldErrors.email ? 'border-red-500/50' : ''}`}
-                  autoComplete="email"
-                  autoFocus
-                />
+                <input type="email" value={form.email} onChange={handleChange('email')}
+                  placeholder="you@example.com" autoComplete="email" autoFocus
+                  className={`input-field pl-10 ${fieldErrors.email ? 'border-red-500/50' : ''}`} />
               </div>
-              {fieldErrors.email && (
-                <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1">
-                  ⚠ {fieldErrors.email}
-                </p>
-              )}
+              {fieldErrors.email && <p className="text-red-400 text-xs mt-1.5">⚠ {fieldErrors.email}</p>}
             </div>
 
             {/* Password */}
@@ -130,46 +129,32 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <RiLockLine className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={handleChange('password')}
-                  placeholder="Your password"
-                  className={`input-field pl-10 pr-10 ${fieldErrors.password ? 'border-red-500/50' : ''}`}
+                <input type={showPassword ? 'text' : 'password'} value={form.password}
+                  onChange={handleChange('password')} placeholder="Your password"
                   autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-                  tabIndex={-1}
-                >
+                  className={`input-field pl-10 pr-10 ${fieldErrors.password ? 'border-red-500/50' : ''}`} />
+                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
                   {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
                 </button>
               </div>
-              {fieldErrors.password && (
-                <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1">
-                  ⚠ {fieldErrors.password}
-                </p>
-              )}
+              {fieldErrors.password && <p className="text-red-400 text-xs mt-1.5">⚠ {fieldErrors.password}</p>}
             </div>
 
             {/* Submit */}
             <motion.button
               type="submit"
-              disabled={isLoading}
-              whileHover={{ scale: isLoading ? 1 : 1.01 }}
-              whileTap={{ scale: isLoading ? 1 : 0.99 }}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 mt-1 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={loading}
+              whileHover={{ scale: loading ? 1 : 1.01 }}
+              whileTap={{ scale: loading ? 1 : 0.99 }}
+              className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isLoading ? (
+              {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Signing in…
                 </>
-              ) : (
-                'Sign In'
-              )}
+              ) : 'Sign In'}
             </motion.button>
           </form>
 
@@ -181,30 +166,29 @@ export default function LoginPage() {
           </div>
 
           {/* Google */}
-          <button
-            type="button"
-            onClick={loginWithGoogle}
+          <button type="button" onClick={loginWithGoogle}
             className="w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm font-medium text-gray-300 hover:text-white transition-all"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-          >
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <RiGoogleLine size={16} />
             Continue with Google
           </button>
 
-          {/* Switch to register */}
           <p className="text-center text-gray-400 text-sm mt-6">
             Don't have an account?{' '}
             <Link href="/register">
-              <span className="text-primary-400 hover:text-primary-300 font-semibold cursor-pointer transition-colors">
+              <span className="text-primary-400 hover:text-primary-300 font-semibold cursor-pointer">
                 Create one free →
               </span>
             </Link>
           </p>
         </div>
 
-        {/* Hint */}
         <p className="text-center text-gray-600 text-xs mt-4">
-          New here? <Link href="/register"><span className="text-gray-500 underline cursor-pointer">Sign up first</span></Link> — login only works after registration.
+          New here?{' '}
+          <Link href="/register">
+            <span className="text-gray-500 underline cursor-pointer">Sign up first</span>
+          </Link>{' '}
+          — login only works after registration.
         </p>
       </motion.div>
     </div>

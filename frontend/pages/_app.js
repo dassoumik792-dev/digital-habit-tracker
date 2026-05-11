@@ -10,21 +10,38 @@ import useAuthStore from '../store/authStore';
 import '../styles/globals.css';
 
 export default function App({ Component, pageProps, router }) {
-  const { refreshSession, logout } = useAuthStore();
+  const { refreshSession, logout, isLoading } = useAuthStore();
 
   useEffect(() => {
-    // Restore session on page load
+    // ── Safety net: clear any stale isLoading=true from localStorage ──────────
+    // This can happen if the browser crashed mid-login in a previous session.
+    try {
+      const stored = localStorage.getItem('focuspulse-auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.state?.isLoading === true) {
+          parsed.state.isLoading = false;
+          localStorage.setItem('focuspulse-auth', JSON.stringify(parsed));
+          console.log('[App] Cleared stale isLoading from localStorage');
+        }
+      }
+    } catch (_) {}
+
+    // ── Restore session on page load ──────────────────────────────────────────
     refreshSession();
 
-    // Listen for auth state changes (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        await refreshSession();
+    // ── Listen for Supabase auth state changes ────────────────────────────────
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('[Auth] State change:', event);
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          await refreshSession();
+        }
+        if (event === 'SIGNED_OUT') {
+          logout();
+        }
       }
-      if (event === 'SIGNED_OUT') {
-        logout();
-      }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
