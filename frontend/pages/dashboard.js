@@ -108,6 +108,17 @@ export default function DashboardPage() {
         weeklyData: weeklyRes.data
       });
 
+      // Check for API errors first
+      if (overviewRes.status >= 400) {
+        console.error('[Dashboard] Overview API error:', overviewRes.status, overviewRes.data);
+        throw new Error(`Overview API failed: ${overviewRes.data?.message || 'Unknown error'}`);
+      }
+      
+      if (weeklyRes.status >= 400) {
+        console.error('[Dashboard] Weekly API error:', weeklyRes.status, weeklyRes.data);
+        throw new Error(`Weekly API failed: ${weeklyRes.data?.message || 'Unknown error'}`);
+      }
+
       // Process overview data with validation
       if (overviewRes.data?.success && overviewRes.data.data) {
         console.log('[Dashboard] Setting overview data:', overviewRes.data.data);

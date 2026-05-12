@@ -25,4 +25,22 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnon || '', {
   },
 });
 
+// Test connection in browser
+if (typeof window !== 'undefined') {
+  (async () => {
+    try {
+      console.log('[Frontend Supabase] Testing connection...');
+      const { data, error } = await supabase.from('habits').select('id').limit(1);
+      if (error) {
+        console.error('[Frontend Supabase] Connection test failed:', error.message);
+        console.error('[Frontend Supabase] Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+      } else {
+        console.log('[Frontend Supabase] Connection test successful');
+      }
+    } catch (err) {
+      console.error('[Frontend Supabase] Connection test error:', err.message);
+    }
+  })();
+}
+
 export default supabase;

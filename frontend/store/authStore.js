@@ -205,11 +205,48 @@ const useAuthStore = create(
 
       // ── LOG OUT ─────────────────────────────────────────────────────────────
       logout: async () => {
+        set({ isLoading: true });
         try {
-          await supabase.auth.signOut();
-        } catch (_) {}
-        set({ user: null, session: null, isAuthenticated: false, isLoading: false });
-        toast.success('Logged out successfully');
+          console.log('[Auth] Starting logout process...');
+          
+          // Sign out from Supabase
+          const { error } = await supabase.auth.signOut();
+          
+          if (error) {
+            console.error('[Auth] Supabase logout error:', error);
+            // Continue with local cleanup even if Supabase logout fails
+          }
+          
+          // Clear all local state
+          set({ 
+            user: null, 
+            session: null, 
+            isAuthenticated: false, 
+            isLoading: false 
+          });
+          
+          // Clear any stored tokens or session data
+          try {
+            localStorage.removeItem('focuspulse-auth');
+            sessionStorage.clear();
+          } catch (_) {}
+          
+          console.log('[Auth] Logout completed successfully');
+          toast.success('Logged out successfully');
+          return { success: true };
+          
+        } catch (err) {
+          console.error('[Auth] Logout error:', err);
+          // Force logout even if there's an error
+          set({ 
+            user: null, 
+            session: null, 
+            isAuthenticated: false, 
+            isLoading: false 
+          });
+          toast.error('Logout completed with warnings');
+          return { success: true }; // Still consider it successful
+        }
       },
 
       // ── REFRESH SESSION (called on app load) ─────────────────────────────────

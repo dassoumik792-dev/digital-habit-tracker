@@ -15,6 +15,7 @@ import {
 } from 'react-icons/ri';
 import useAuthStore from '../../store/authStore';
 import { notificationAPI } from '../../lib/api';
+import LogoutButton from '../auth/LogoutButton';
 
 const navItems = [
   { href: '/dashboard',     icon: RiDashboardLine, label: 'Dashboard' },
@@ -29,9 +30,10 @@ const navItems = [
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, isLoading } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     fetchUnreadCount();
@@ -47,8 +49,20 @@ export default function DashboardLayout({ children }) {
   };
 
   const handleLogout = async () => {
-    await logout();
-    router.push('/login');
+    const confirmed = window.confirm('Are you sure you want to sign out?');
+    if (!confirmed) return;
+    
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still redirect even if there's an error
+      router.push('/login');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
@@ -144,13 +158,11 @@ export default function DashboardLayout({ children }) {
               <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
               <p className="text-xs text-gray-500 truncate">{user?.email}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-gray-500 hover:text-red-400 transition-colors"
-              title="Logout"
-            >
-              <RiLogoutBoxLine size={16} />
-            </button>
+            <LogoutButton 
+              variant="compact" 
+              showText={false}
+              className="w-8 h-8"
+            />
           </div>
         </div>
       </motion.aside>
@@ -197,6 +209,12 @@ export default function DashboardLayout({ children }) {
                 )}
               </div>
             </Link>
+
+            {/* Logout button - prominent in top bar */}
+            <LogoutButton 
+              variant="default" 
+              className="hidden sm:flex" 
+            />
 
             {/* Avatar */}
             <Link href="/profile">

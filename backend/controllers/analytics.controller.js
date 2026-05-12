@@ -50,23 +50,41 @@ exports.getOverview = asyncHandler(async (req, res) => {
       userId: profileRes.data?.id
     });
 
-    // Check for RLS issues
-    if (todayRes.error && todayRes.error.message.includes('row-level security')) {
-      console.error('[Analytics] RLS policy blocking access for today query');
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: Row Level Security policy issue',
-        error: 'RLS_ACCESS_DENIED'
-      });
+    // Check for RLS issues and connection problems
+    if (todayRes.error) {
+      console.error('[Analytics] Today query failed:', todayRes.error);
+      if (todayRes.error.message.includes('row-level security')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: Row Level Security policy issue',
+          error: 'RLS_ACCESS_DENIED'
+        });
+      }
+      if (todayRes.error.message.includes('relation "public.habits" does not exist')) {
+        return res.status(500).json({
+          success: false,
+          message: 'habits table not found - run schema.sql',
+          error: 'TABLE_NOT_FOUND'
+        });
+      }
     }
 
-    if (thisWeekRes.error && thisWeekRes.error.message.includes('row-level security')) {
-      console.error('[Analytics] RLS policy blocking access for week query');
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: Row Level Security policy issue',
-        error: 'RLS_ACCESS_DENIED'
-      });
+    if (thisWeekRes.error) {
+      console.error('[Analytics] Week query failed:', thisWeekRes.error);
+      if (thisWeekRes.error.message.includes('row-level security')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: Row Level Security policy issue',
+          error: 'RLS_ACCESS_DENIED'
+        });
+      }
+      if (thisWeekRes.error.message.includes('relation "public.habits" does not exist')) {
+        return res.status(500).json({
+          success: false,
+          message: 'habits table not found - run schema.sql',
+          error: 'TABLE_NOT_FOUND'
+        });
+      }
     }
 
     // Process data with proper field mapping

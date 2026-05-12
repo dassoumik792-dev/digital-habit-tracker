@@ -460,4 +460,8 @@ async function seedDatabase() {
 }
 
 // Run the seeding function
+<<<<<<< HEAD
 seedDatabase();
+=======
+seedDatabase();
+>>>>>>> eac5b31 (added logout)

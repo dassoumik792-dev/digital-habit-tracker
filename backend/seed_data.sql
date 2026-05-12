@@ -154,4 +154,8 @@ INSERT INTO public.activity_logs (user_id, action, entity_type, metadata) VALUES
 -- Productivity scores
 -- AI reports
 -- Activity logs
+<<<<<<< HEAD
 -- ============================================================
+=======
+-- ============================================================
+>>>>>>> eac5b31 (added logout)

@@ -24,4 +24,22 @@ const supabase = createClient(url || '', key || '', {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Test connection at startup
+(async () => {
+  try {
+    console.log('[Supabase] Testing connection...');
+    const { data, error } = await supabase.from('habits').select('id').limit(1);
+    if (error) {
+      console.error('[Supabase] Connection test failed:', error.message);
+      if (error.message.includes('relation "public.habits" does not exist')) {
+        console.error('[Supabase] HINT: Run schema.sql in Supabase SQL Editor');
+      }
+    } else {
+      console.log('[Supabase] Connection test successful');
+    }
+  } catch (err) {
+    console.error('[Supabase] Connection test error:', err.message);
+  }
+})();
+
 module.exports = supabase;
