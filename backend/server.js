@@ -22,6 +22,7 @@ const focusRoutes        = require('./routes/focus.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const adminRoutes        = require('./routes/admin.routes');
 const reportRoutes       = require('./routes/report.routes');
+const debugRoutes        = require('./routes/debug.routes');
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.use('/api/focus',         focusRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/reports',       reportRoutes);
+app.use('/api/debug',         debugRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use('*', (req, res) => {

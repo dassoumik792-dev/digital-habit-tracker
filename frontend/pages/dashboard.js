@@ -69,22 +69,128 @@ export default function DashboardPage() {
   const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) { router.push('/login'); return; }
+    console.log('[Dashboard] useEffect triggered:', { 
+      isAuthenticated, 
+      userId: user?.id,
+      currentPath: router.pathname
+    });
+    
+    if (!isAuthenticated) { 
+      console.log('[Dashboard] Not authenticated, redirecting to login');
+      router.push('/login'); 
+      return; 
+    }
+    
+    console.log('[Dashboard] Authenticated, starting data fetch');
     fetchData();
   }, [isAuthenticated]);
 
   const fetchData = async () => {
+    console.log('[Dashboard] fetchData called, setting loading to true');
     setLoading(true);
+    
     try {
+      console.log('[Dashboard] Starting data fetch...');
+      console.log('[Dashboard] API URLs:', {
+        overview: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/analytics/overview`,
+        weekly: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/analytics/weekly`
+      });
+      
       const [overviewRes, weeklyRes] = await Promise.all([
         analyticsAPI.getOverview(),
         analyticsAPI.getWeekly(),
       ]);
-      setOverview(overviewRes.data.data);
-      setWeeklyData(weeklyRes.data.data.chartData || []);
+      
+      console.log('[Dashboard] Raw API responses:', {
+        overviewStatus: overviewRes.status,
+        overviewData: overviewRes.data,
+        weeklyStatus: weeklyRes.status,
+        weeklyData: weeklyRes.data
+      });
+
+      // Process overview data with validation
+      if (overviewRes.data?.success && overviewRes.data.data) {
+        console.log('[Dashboard] Setting overview data:', overviewRes.data.data);
+        setOverview(overviewRes.data.data);
+        console.log('[Dashboard] Overview data set successfully');
+      } else {
+        console.error('[Dashboard] Overview API failed:', {
+          status: overviewRes.status,
+          data: overviewRes.data,
+          message: overviewRes.data?.message
+        });
+        // Set fallback data instead of throwing error to prevent crashes
+        const fallbackData = {
+          today: {
+            screen_time_total: 0,
+            screen_time_productive: 0,
+            screen_time_unproductive: 0,
+            screen_time_neutral: 0,
+            focus_score: 0,
+            productivity_score: 0,
+            deep_work_minutes: 0,
+            social_media_time: 0,
+            night_usage: 0,
+            distraction_count: 0,
+            mood: 'neutral',
+            energy_level: 5,
+          },
+          improvements: { screenTime: 0, focusScore: 0, productivity: 0, socialMedia: 0 },
+          streakInfo: { streak_current: 0, streak_longest: 0 }
+        };
+        setOverview(fallbackData);
+        console.log('[Dashboard] Set fallback overview data');
+      }
+
+      // Process weekly data with validation
+      if (weeklyRes.data?.success && weeklyRes.data.data) {
+        const chartData = Array.isArray(weeklyRes.data.data.chartData) ? weeklyRes.data.data.chartData : [];
+        console.log('[Dashboard] Setting weekly data:', chartData);
+        setWeeklyData(chartData);
+        console.log('[Dashboard] Weekly data set successfully:', chartData.length, 'days');
+      } else {
+        console.error('[Dashboard] Weekly API failed:', {
+          status: weeklyRes.status,
+          data: weeklyRes.data,
+          message: weeklyRes.data?.message
+        });
+        setWeeklyData([]);
+        console.log('[Dashboard] Set empty weekly data');
+      }
+
     } catch (err) {
-      toast.error('Failed to load dashboard data');
+      console.error('[Dashboard] Data fetch error:', {
+        message: err.message,
+        stack: err.stack,
+        response: err.response?.data
+      });
+      toast.error(`Failed to load dashboard data: ${err.message}`);
+      
+      // Set empty data to prevent crashes
+      const fallbackData = {
+        today: {
+          screen_time_total: 0,
+          screen_time_productive: 0,
+          screen_time_unproductive: 0,
+          screen_time_neutral: 0,
+          focus_score: 0,
+          productivity_score: 0,
+          deep_work_minutes: 0,
+          social_media_time: 0,
+          night_usage: 0,
+          distraction_count: 0,
+          mood: 'neutral',
+          energy_level: 5,
+        },
+        improvements: { screenTime: 0, focusScore: 0, productivity: 0, socialMedia: 0 },
+        streakInfo: { streak_current: 0, streak_longest: 0 }
+      };
+      
+      console.log('[Dashboard] Setting fallback data due to error:', fallbackData);
+      setOverview(fallbackData);
+      setWeeklyData([]);
     } finally {
+      console.log('[Dashboard] Setting loading to false');
       setLoading(false);
     }
   };
@@ -105,11 +211,11 @@ export default function DashboardPage() {
   const today = overview?.today;
   const improvements = overview?.improvements || {};
 
-  // Category pie data
+  // Category pie data - map backend field names to frontend expectations
   const categoryData = today ? [
-    { name: 'Productive', value: today.screenTime?.productive || 0 },
-    { name: 'Unproductive', value: today.screenTime?.unproductive || 0 },
-    { name: 'Neutral', value: today.screenTime?.neutral || 0 },
+    { name: 'Productive', value: today.screen_time_productive || 0 },
+    { name: 'Unproductive', value: today.screen_time_unproductive || 0 },
+    { name: 'Neutral', value: today.screen_time_neutral || 0 },
   ].filter((d) => d.value > 0) : [];
 
   const greeting = () => {
@@ -151,7 +257,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Screen Time Today"
-          value={today ? Math.round(today.screenTime?.total / 60 * 10) / 10 : 0}
+          value={today ? Math.round((today.screen_time_total || 0) / 60 * 10) / 10 : 0}
           unit="hrs"
           change={improvements.screenTime}
           icon={RiTimeLine}
@@ -160,7 +266,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Focus Score"
-          value={today?.focusScore || 0}
+          value={today?.focus_score || 0}
           unit="/100"
           change={improvements.focusScore}
           icon={RiFlashlightLine}
@@ -169,7 +275,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Productivity"
-          value={today?.productivityScore || 0}
+          value={today?.productivity_score || 0}
           unit="%"
           change={improvements.productivity}
           icon={RiBrainLine}
@@ -178,7 +284,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Current Streak"
-          value={user?.streak?.current || 0}
+          value={overview?.streakInfo?.streak_current || user?.streak?.current || 0}
           unit="days"
           icon={RiFireLine}
           color="#f59e0b"
@@ -293,10 +399,10 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {[
-                { label: 'Deep Work', value: `${today?.deepWorkMinutes || 0} min`, color: '#6366f1', icon: '🎯' },
-                { label: 'Social Media', value: `${today?.socialMediaTime || 0} min`, color: '#ef4444', icon: '📱' },
-                { label: 'Night Usage', value: `${today?.nightUsage || 0} min`, color: '#f59e0b', icon: '🌙' },
-                { label: 'Distractions', value: `${today?.distractionCount || 0} times`, color: '#a855f7', icon: '⚡' },
+                { label: 'Deep Work', value: `${today?.deep_work_minutes || 0} min`, color: '#6366f1', icon: '🎯' },
+                { label: 'Social Media', value: `${today?.social_media_time || 0} min`, color: '#ef4444', icon: '📱' },
+                { label: 'Night Usage', value: `${today?.night_usage || 0} min`, color: '#f59e0b', icon: '🌙' },
+                { label: 'Distractions', value: `${today?.distraction_count || 0} times`, color: '#a855f7', icon: '⚡' },
               ].map((item) => (
                 <div key={item.label} className="flex items-center justify-between p-3 rounded-xl"
                   style={{ background: 'rgba(255,255,255,0.03)' }}>

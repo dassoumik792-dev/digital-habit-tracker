@@ -98,19 +98,67 @@ exports.seedDemoData = asyncHandler(async (req, res) => {
     const date = d.toISOString().split('T')[0];
 
     // Skip if already exists
-    const { data: existing } = await supabase
-      .from('habits').select('id').eq('user_id', uid).eq('date', date).single();
-    if (existing) continue;
+    console.log(`[Habit] Checking existing record for ${date}`);
+    const { data: existing, error: existingError } = await supabase
+      .from('habits').select('id').eq('user_id', uid).eq('date', date).maybeSingle();
+    
+    console.log(`[Habit] Existing check result:`, { 
+      date, 
+      existing: !!existing, 
+      error: existingError 
+    });
+    
+    if (existing) {
+      console.log(`[Habit] Skipping ${date} - already exists`);
+      continue;
+    }
 
     const mock = generateMockHabitData(i);
+    console.log(`[Habit] Generated mock data for ${date}:`, {
+      screen_time_total: mock.screenTime?.total,
+      focus_score: mock.focusScore,
+      productivity_score: mock.productivityScore
+    });
+
+    const insertData = { user_id: uid, date, ...flattenHabit(mock) };
+    console.log(`[Habit] Inserting data for ${date}:`, Object.keys(insertData));
+
     const { data, error } = await supabase
       .from('habits')
-      .insert({ user_id: uid, date, ...flattenHabit(mock) })
+      .insert(insertData)
       .select().single();
 
+    console.log(`[Habit] Insert result for ${date}:`, {
+      success: !error,
+      data: data ? { id: data.id, user_id: data.user_id, date: data.date } : null,
+      error: error?.message,
+      statusCode: error?.code,
+      details: error?.details
+    });
+
+    // Verify the insert actually worked by querying it back
     if (!error && data) {
+      console.log(`[Habit] Verifying insert for ${date}...`);
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('habits')
+        .select('*')
+        .eq('id', data.id)
+        .single();
+      
+      console.log(`[Habit] Verification result for ${date}:`, {
+        found: !!verifyData,
+        verifyError: verifyError?.message,
+        record: verifyData ? { id: verifyData.id, user_id: verifyData.user_id, date: verifyData.date } : null
+      });
+    }
+
+    if (!error && data) {
+      console.log(`[Habit] Upserting productivity score for ${date}`);
       await upsertProductivityScore(uid, date, data);
       seeded.push(date);
+      console.log(`[Habit] Successfully seeded ${date}`);
+    } else {
+      console.error(`[Habit] Failed to seed ${date}:`, error);
     }
   }
 
