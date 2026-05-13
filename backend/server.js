@@ -38,6 +38,7 @@ app.use(rateLimit({
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:3000',
+    'http://localhost:3001',
     'https://focuspulse.vercel.app',
   ],
   credentials: true,
@@ -98,10 +99,19 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n🚀 FocusPulse AI Server running on port ${PORT}`);
   console.log(`📡 Database: Supabase PostgreSQL`);
   console.log(`🔗 Health: http://localhost:${PORT}/health\n`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ Port ${PORT} is already in use. Please stop the process using this port or set PORT to a free port.`);
+  } else {
+    console.error('Server error:', err);
+  }
+  process.exit(1);
 });
 
 module.exports = app;

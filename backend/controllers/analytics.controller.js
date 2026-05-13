@@ -21,12 +21,13 @@ exports.getOverview = asyncHandler(async (req, res) => {
     console.log('[Analytics] Query dates:', { today, weekAgo, twoWeeksAgo });
 
     // Execute queries with comprehensive error handling
-    const [todayRes, thisWeekRes, lastWeekRes, scoresRes, profileRes] = await Promise.all([
+    const [todayRes, thisWeekRes, lastWeekRes, scoresRes, profileRes, allHabitsRes] = await Promise.all([
       supabase.from('habits').select('*').eq('user_id', uid).eq('date', today).maybeSingle(),
       supabase.from('habits').select('*').eq('user_id', uid).gte('date', weekAgo).lte('date', today),
       supabase.from('habits').select('*').eq('user_id', uid).gte('date', twoWeeksAgo).lt('date', weekAgo),
       supabase.from('productivity_scores').select('*').eq('user_id', uid).gte('date', weekAgo).order('date'),
       supabase.from('users').select('streak_current, streak_longest').eq('id', uid).maybeSingle(),
+      supabase.from('habits').select('date').eq('user_id', uid).order('date', { ascending: false }).limit(100),
     ]);
 
     console.log('[Analytics] === QUERY RESULTS ===');
@@ -49,6 +50,21 @@ exports.getOverview = asyncHandler(async (req, res) => {
       hasData: !!profileRes.data,
       userId: profileRes.data?.id
     });
+
+    // Calculate current streak
+    const habitDates = (allHabitsRes.data || []).map(h => h.date).sort();
+    const currentStreak = calculateCurrentStreak(habitDates, today);
+    const longestStreak = Math.max(profileRes.data?.streak_longest || 0, currentStreak);
+
+    // Update user's streak if it has changed
+    if (profileRes.data && (profileRes.data.streak_current !== currentStreak || profileRes.data.streak_longest !== longestStreak)) {
+      await supabase.from('users').update({
+        streak_current: currentStreak,
+        streak_longest: longestStreak,
+        streak_last_date: currentStreak > 0 ? today : profileRes.data.streak_last_date
+      }).eq('id', uid);
+      console.log('[Analytics] Updated user streak:', { currentStreak, longestStreak });
+    }
 
     // Check for RLS issues and connection problems
     if (todayRes.error) {
@@ -129,7 +145,10 @@ exports.getOverview = asyncHandler(async (req, res) => {
           socialMedia: calcImprovement(lastWeekAvg.socialMedia, thisWeekAvg.socialMedia, true),
         },
         recentScores: scoresRes.data || [],
-        streakInfo: profileRes.data || defaultProfileData,
+        streakInfo: {
+          streak_current: currentStreak,
+          streak_longest: longestStreak
+        },
         debugInfo: {
           totalHabitsCount: (thisWeekRes.data || []).length,
           userId: uid,
@@ -266,4 +285,34 @@ function buildChartData(habits, startDate, days) {
       deepWork:          h?.deep_work_minutes || 0,
     };
   });
+}
+
+function calculateCurrentStreak(dates, today) {
+  if (!dates.length) return 0;
+  
+  // Remove duplicates and sort
+  const uniqueDates = [...new Set(dates)].sort();
+  
+  let streak = 0;
+  let currentDate = new Date(today);
+  
+  // Check if today has a habit
+  const todayStr = dateStr(currentDate);
+  if (!uniqueDates.includes(todayStr)) {
+    // If no habit today, check yesterday
+    currentDate.setDate(currentDate.getDate() - 1);
+  }
+  
+  // Count consecutive days backwards
+  while (true) {
+    const dateStr = dateStr(currentDate);
+    if (uniqueDates.includes(dateStr)) {
+      streak++;
+      currentDate.setDate(currentDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  
+  return streak;
 }

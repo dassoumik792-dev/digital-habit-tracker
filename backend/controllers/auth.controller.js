@@ -23,13 +23,25 @@ exports.register = asyncHandler(async (req, res) => {
   // The handle_new_user trigger creates the public.users row automatically.
   console.log('[Auth] User created in auth, checking profile creation...');
   
-  // Verify the trigger actually created the user profile
-  const { data: profileCheck, error: profileError } = await supabase
+  // Verify or create the user profile row in public.users
+  let { data: profileCheck, error: profileError } = await supabase
     .from('users')
     .select('*')
     .eq('id', data.user.id)
-    .single();
-    
+    .maybeSingle();
+
+  if (!profileCheck && !profileError) {
+    const defaultName = data.user.user_metadata?.name || data.user.email.split('@')[0] || 'User';
+    const createResult = await supabase
+      .from('users')
+      .insert({ id: data.user.id, email: data.user.email, name: defaultName })
+      .select('*')
+      .single();
+
+    profileCheck = createResult.data;
+    profileError = createResult.error;
+  }
+
   console.log('[Auth] Profile creation verification:', {
     userId: data.user.id,
     profileFound: !!profileCheck,
@@ -82,8 +94,22 @@ exports.login = asyncHandler(async (req, res) => {
   // Update last_login
   await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', data.user.id);
 
-  // Fetch profile
-  const { data: profile } = await supabase.from('users').select('*').eq('id', data.user.id).single();
+  // Fetch or create profile
+  let { data: profile, error: profileError } = await supabase.from('users').select('*').eq('id', data.user.id).maybeSingle();
+  if (!profile && !profileError) {
+    const defaultName = data.user.user_metadata?.name || data.user.email.split('@')[0] || 'User';
+    const createResult = await supabase
+      .from('users')
+      .insert({ id: data.user.id, email: data.user.email, name: defaultName })
+      .select('*')
+      .single();
+    profile = createResult.data;
+    profileError = createResult.error;
+  }
+
+  if (profileError) {
+    throw new AppError(profileError.message || 'Unable to fetch user profile', 500);
+  }
 
   res.json({
     success: true,

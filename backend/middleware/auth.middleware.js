@@ -46,7 +46,7 @@ const protect = async (req, res, next) => {
       .from('users')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     console.log('[Auth] Profile query result:', {
       profile: profile ? { id: profile.id, name: profile.name, email: profile.email } : null,
@@ -54,18 +54,39 @@ const protect = async (req, res, next) => {
       isActive: profile?.is_active
     });
 
-    if (profileError || !profile) {
-      console.log('[Auth] User profile not found:', profileError?.message);
-      return res.status(401).json({ success: false, message: 'User profile not found.' });
+    if (profileError) {
+      if (profileError.message?.includes("Could not find the table 'public.users'")) {
+        console.error('[Auth] Missing users table in Supabase schema:', profileError.message);
+        return res.status(500).json({ success: false, message: 'Server configuration error. User profile table is not available.' });
+      }
+      console.log('[Auth] User profile query failed:', profileError.message);
+      return res.status(500).json({ success: false, message: 'Unable to read user profile.' });
     }
 
-    if (!profile.is_active) {
-      console.log('[Auth] Account deactivated for user:', profile.id);
+    let resolvedProfile = profile;
+    if (!resolvedProfile) {
+      console.log('[Auth] No profile row found, creating fallback profile for ID:', user.id);
+      const defaultName = user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+      const { data: createdProfile, error: createError } = await supabase
+        .from('users')
+        .insert({ id: user.id, email: user.email, name: defaultName })
+        .select('*')
+        .single();
+
+      if (createError || !createdProfile) {
+        console.error('[Auth] Failed to create fallback profile:', createError?.message);
+        return res.status(500).json({ success: false, message: 'Unable to create user profile.' });
+      }
+      resolvedProfile = createdProfile;
+    }
+
+    if (!resolvedProfile.is_active) {
+      console.log('[Auth] Account deactivated for user:', resolvedProfile.id);
       return res.status(401).json({ success: false, message: 'Account has been deactivated.' });
     }
 
     // Attach to request for use in controllers
-    req.user = { ...profile, auth_id: user.id };
+    req.user = { ...resolvedProfile, auth_id: user.id };
     console.log('[Auth] User attached to request:', {
       id: req.user.id,
       name: req.user.name,
